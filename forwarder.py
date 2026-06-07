@@ -207,11 +207,18 @@ class ForwarderService:
         if key in self._seen:
             return
         self._seen.add(key)
+        cf = self.settings.content_filter
+        # 命中屏蔽关键词且开启"丢弃整条" -> 不搬运
+        if cf.should_drop(message.text):
+            self.logger.info("命中屏蔽词，丢弃整条 [%s:%s]", message.chat_id, message.id)
+            return
         try:
             if self.settings.mode == "forward":
                 await self.client.forward_messages(self._target_entity, message)
             else:
                 caption = message.text if self.settings.keep_caption else None
+                if caption and cf.active:
+                    caption = cf.apply(caption)
                 await self.client.send_file(
                     self._target_entity, file=message.media, caption=caption
                 )
@@ -469,6 +476,10 @@ class GroupService:
 
         async def _handler(event):  # noqa: ANN001
             if is_video_message(event.message):
+                # 命中屏蔽词且开启"丢弃整条" -> 不入队
+                if self.settings.content_filter.should_drop(event.message.text):
+                    self.logger.info("命中屏蔽词，丢弃整条 [%s:%s]", event.chat_id, event.message.id)
+                    return
                 key = (event.chat_id, event.message.id)
                 if self._mark_seen(key):
                     self.logger.info("检测到新视频 [%s:%s]，加入分发队列", event.chat_id, event.message.id)
@@ -495,6 +506,8 @@ class GroupService:
                 collected = []
                 async for msg in client.iter_messages(ent, limit=limit * 5):
                     if is_video_message(msg):
+                        if self.settings.content_filter.should_drop(msg.text):
+                            continue
                         collected.append((msg.chat_id, msg.id))
                     if len(collected) >= limit:
                         break
@@ -572,6 +585,7 @@ class GroupService:
         source_ent = ent.get("sources", {}).get(src_chat_id)
         if target is None or source_ent is None:
             raise RuntimeError("该账号缺少频道实体（可能无访问权限）")
+        cf = self.settings.content_filter
         if self.settings.mode == "forward":
             await client.forward_messages(target, msg_id, from_peer=source_ent)
         else:
@@ -579,6 +593,8 @@ class GroupService:
             if msg is None:
                 raise RuntimeError("无法获取源消息")
             caption = msg.text if self.settings.keep_caption else None
+            if caption and cf.active:
+                caption = cf.apply(caption)
             await client.send_file(target, file=msg.media, caption=caption)
 
     async def stop(self):

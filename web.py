@@ -65,6 +65,14 @@ def require_auth(tg_session: Optional[str] = Cookie(default=None)):
 
 
 # ------------------------- 请求体 -------------------------
+class ContentFilterBody(BaseModel):
+    block_keywords: list[str] = []
+    remove_links: bool = False
+    remove_mentions: bool = False
+    replacement: str = ""
+    drop_on_match: bool = False
+
+
 class SettingsBody(BaseModel):
     name: str = "新账号"
     api_id: int = 0
@@ -76,6 +84,7 @@ class SettingsBody(BaseModel):
     keep_caption: bool = True
     backfill_limit: int = 0
     send_delay: int = 3
+    content_filter: ContentFilterBody = ContentFilterBody()
 
 
 class PhoneBody(BaseModel):
@@ -110,6 +119,7 @@ class GroupSettingsBody(BaseModel):
     per_account_delay: int = 5
     strategy: str = "balanced"
     backfill_limit: int = 0
+    content_filter: ContentFilterBody = ContentFilterBody()
 
 
 class AddGroupBody(BaseModel):
