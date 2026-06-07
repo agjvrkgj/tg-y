@@ -100,6 +100,22 @@ class AddAccountBody(BaseModel):
     name: str = "新账号"
 
 
+class GroupSettingsBody(BaseModel):
+    name: str = "新负载均衡组"
+    member_ids: list[str] = []
+    source_channels: list[str] = []
+    target_channel: str = ""
+    mode: str = "copy"
+    keep_caption: bool = True
+    per_account_delay: int = 5
+    strategy: str = "balanced"
+    backfill_limit: int = 0
+
+
+class AddGroupBody(BaseModel):
+    name: str = "新负载均衡组"
+
+
 # ------------------------- 页面 -------------------------
 @app.get("/", response_class=HTMLResponse)
 async def index():
@@ -236,6 +252,68 @@ async def account_start(account_id: str, _: bool = Depends(require_auth)):
 async def account_stop(account_id: str, _: bool = Depends(require_auth)):
     await _svc(account_id).stop()
     return await _svc(account_id).status()
+
+
+# ------------------------- 负载均衡组 API -------------------------
+@app.get("/api/groups")
+async def list_groups(_: bool = Depends(require_auth)):
+    return {"groups": await manager.list_group_status()}
+
+
+@app.post("/api/groups")
+async def add_group(body: AddGroupBody, _: bool = Depends(require_auth)):
+    grp = manager.add_group(body.name)
+    return await grp.status()
+
+
+def _grp(group_id: str):
+    try:
+        return manager.get_group(group_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.delete("/api/groups/{group_id}")
+async def delete_group(group_id: str, _: bool = Depends(require_auth)):
+    try:
+        await manager.remove_group(group_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True}
+
+
+@app.get("/api/groups/{group_id}/status")
+async def group_status(group_id: str, _: bool = Depends(require_auth)):
+    return await _grp(group_id).status()
+
+
+@app.get("/api/groups/{group_id}/logs")
+async def group_logs(group_id: str, limit: int = 200, _: bool = Depends(require_auth)):
+    return {"logs": _grp(group_id).get_logs(limit)}
+
+
+@app.post("/api/groups/{group_id}/settings")
+async def group_settings(group_id: str, body: GroupSettingsBody, _: bool = Depends(require_auth)):
+    try:
+        await manager.apply_group_settings(group_id, body.model_dump())
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc))
+    return await _grp(group_id).status()
+
+
+@app.post("/api/groups/{group_id}/start")
+async def group_start(group_id: str, _: bool = Depends(require_auth)):
+    try:
+        await _grp(group_id).start()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc))
+    return await _grp(group_id).status()
+
+
+@app.post("/api/groups/{group_id}/stop")
+async def group_stop(group_id: str, _: bool = Depends(require_auth)):
+    await _grp(group_id).stop()
+    return await _grp(group_id).status()
 
 
 @app.exception_handler(HTTPException)
