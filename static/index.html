@@ -15,7 +15,7 @@
   header { padding: 14px 22px; border-bottom: 1px solid var(--line);
     display: flex; align-items: center; gap: 12px; }
   header h1 { font-size: 17px; margin: 0; font-weight: 600; flex: 1; }
-  .layout { display: grid; grid-template-columns: 240px 1fr; gap: 0; min-height: calc(100vh - 56px); }
+  .layout { display: grid; grid-template-columns: 250px 1fr; gap: 0; min-height: calc(100vh - 56px); }
   .sidebar { border-right: 1px solid var(--line); padding: 16px; }
   .main { padding: 20px; display: grid; gap: 16px; align-content: start; max-width: 860px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
@@ -43,7 +43,7 @@
   .muted { color: var(--muted); font-size: 13px; }
   .checkbox { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
   .checkbox input { width: auto; }
-  #logs { background: #0a0c10; border: 1px solid var(--line); border-radius: 8px; padding: 12px;
+  .logs { background: #0a0c10; border: 1px solid var(--line); border-radius: 8px; padding: 12px;
     font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px;
     height: 240px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #c9d1d9; }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -53,15 +53,20 @@
   .hidden { display: none !important; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
   a { color: var(--accent); }
-  /* 账号列表 */
-  .acct-item { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px;
+  .item { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px;
     cursor: pointer; border: 1px solid transparent; margin-bottom: 6px; }
-  .acct-item:hover { background: #11141a; }
-  .acct-item.active { background: #11141a; border-color: var(--accent); }
-  .acct-item .nm { flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item:hover { background: #11141a; }
+  .item.active { background: #11141a; border-color: var(--accent); }
+  .item .nm { flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sidebar h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted);
-    margin: 0 0 10px; }
-  /* 遮罩登录 */
+    margin: 18px 0 10px; }
+  .sidebar h3:first-child { margin-top: 0; }
+  .members { display: grid; gap: 6px; margin-top: 6px; }
+  .mrow { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .mrow input { width: auto; }
+  table.mtab { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  table.mtab th, table.mtab td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  table.mtab th { color: var(--muted); font-weight: 500; }
   .overlay { position: fixed; inset: 0; background: rgba(8,9,12,.92); display: flex;
     align-items: center; justify-content: center; z-index: 100; }
   .overlay .box { width: 340px; max-width: 90vw; }
@@ -77,7 +82,7 @@
 <div class="overlay hidden" id="gate">
   <div class="box card">
     <h2>🔒 面板登录</h2>
-    <p class="muted" id="gate-hint">请输入访问密码。</p>
+    <p class="muted">请输入访问密码。</p>
     <input type="password" id="gate-pw" placeholder="访问密码" />
     <div class="btns"><button class="btn" id="gate-login" style="width:100%">进入</button></div>
   </div>
@@ -91,58 +96,57 @@
 </header>
 
 <div class="layout">
-  <!-- 侧栏：账号列表 -->
+  <!-- 侧栏 -->
   <div class="sidebar">
     <h3>账号</h3>
     <div id="acct-list"></div>
-    <button class="btn ghost sm" id="btn-add" style="width:100%; margin-top:8px">＋ 添加账号</button>
+    <button class="btn ghost sm" id="btn-add-acct" style="width:100%; margin-top:6px">＋ 添加账号</button>
+
+    <h3>负载均衡组</h3>
+    <div id="group-list"></div>
+    <button class="btn ghost sm" id="btn-add-group" style="width:100%; margin-top:6px">＋ 新建均衡组</button>
   </div>
 
-  <!-- 主区：当前账号面板 -->
-  <div class="main" id="panel">
+  <!-- 主区 -->
+  <div class="main">
+    <!-- 空提示 -->
     <div class="card" id="empty-tip">
-      <h2>还没有账号</h2>
-      <p class="muted">点击左侧「＋ 添加账号」创建第一个 Telegram 账号，然后填写 API 凭证并登录。</p>
+      <h2>开始使用</h2>
+      <p class="muted">先在左侧「＋ 添加账号」创建并登录若干 Telegram 账号；若要规避限速，再「＋ 新建均衡组」把多个账号编入同一组，由它们轮流分摊搬运。</p>
     </div>
 
+    <!-- 账号面板 -->
     <div id="account-panel" class="hidden" style="display:grid; gap:16px">
-      <!-- 状态 -->
       <div class="card">
         <div style="display:flex; align-items:center; gap:10px">
           <h2 style="margin:0; flex:1" id="acct-title">账号</h2>
-          <button class="btn red ghost sm" id="btn-del">删除账号</button>
+          <button class="btn red ghost sm" id="btn-del-acct">删除账号</button>
         </div>
         <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:12px">
-          <span class="pill"><span id="dot-state" class="dot"></span><span id="state-text">—</span></span>
-          <span class="pill"><span id="dot-auth" class="dot"></span><span id="auth-text">—</span></span>
+          <span class="pill"><span id="a-dot-state" class="dot"></span><span id="a-state-text">—</span></span>
+          <span class="pill"><span id="a-dot-auth" class="dot"></span><span id="a-auth-text">—</span></span>
         </div>
         <div class="stats">
-          <div class="stat"><div class="n" id="st-forwarded">0</div><div class="l">已搬运</div></div>
-          <div class="stat"><div class="n" id="st-errors">0</div><div class="l">失败</div></div>
-          <div class="stat"><div class="n" id="st-started" style="font-size:13px">—</div><div class="l">启动时间</div></div>
-          <div class="stat"><div class="n" id="st-last" style="font-size:13px">—</div><div class="l">最近一条</div></div>
+          <div class="stat"><div class="n" id="a-forwarded">0</div><div class="l">已搬运</div></div>
+          <div class="stat"><div class="n" id="a-errors">0</div><div class="l">失败</div></div>
+          <div class="stat"><div class="n" id="a-started" style="font-size:13px">—</div><div class="l">启动时间</div></div>
+          <div class="stat"><div class="n" id="a-last" style="font-size:13px">—</div><div class="l">最近一条</div></div>
         </div>
-        <div id="problems" class="hint"></div>
+        <div id="a-problems" class="hint"></div>
         <div class="btns">
           <button class="btn green" id="btn-start">▶ 启动监控</button>
           <button class="btn red" id="btn-stop">■ 停止</button>
         </div>
       </div>
 
-      <!-- 登录 -->
       <div class="card">
         <h2>账号登录</h2>
         <div id="login-form">
           <div class="row">
-            <div>
-              <label>手机号（含国家码）</label>
-              <input type="text" id="phone" placeholder="+8613800138000" />
-            </div>
-            <div style="display:flex; align-items:flex-end">
-              <button class="btn" id="btn-sendcode">发送验证码</button>
-            </div>
+            <div><label>手机号（含国家码）</label><input type="text" id="phone" placeholder="+8613800138000" /></div>
+            <div style="display:flex; align-items:flex-end"><button class="btn" id="btn-sendcode">发送验证码</button></div>
           </div>
-          <div class="row" id="code-row">
+          <div class="row">
             <div><label>验证码</label><input type="text" id="code" placeholder="Telegram 收到的验证码" /></div>
             <div><label>两步验证密码（可选）</label><input type="password" id="tfa" placeholder="未开启则留空" /></div>
           </div>
@@ -154,7 +158,6 @@
         </div>
       </div>
 
-      <!-- 配置 -->
       <div class="card">
         <h2>配置</h2>
         <label>账号备注名</label>
@@ -182,13 +185,73 @@
         </div>
         <div class="checkbox"><input type="checkbox" id="keep_caption" /><label style="margin:0">保留原文案（仅 copy）</label></div>
         <div class="btns"><button class="btn" id="btn-save">💾 保存配置</button></div>
+        <div class="hint">独立账号搬运。若该账号已编入某负载均衡组，建议不要再单独启动它监控相同源频道，以免重复。</div>
       </div>
 
-      <!-- 日志 -->
+      <div class="card"><h2>运行日志</h2><div class="logs" id="a-logs"></div></div>
+    </div>
+
+    <!-- 负载均衡组面板 -->
+    <div id="group-panel" class="hidden" style="display:grid; gap:16px">
       <div class="card">
-        <h2>运行日志</h2>
-        <div id="logs"></div>
+        <div style="display:flex; align-items:center; gap:10px">
+          <h2 style="margin:0; flex:1" id="g-title">负载均衡组</h2>
+          <button class="btn red ghost sm" id="btn-del-group">删除组</button>
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:12px">
+          <span class="pill"><span id="g-dot-state" class="dot"></span><span id="g-state-text">—</span></span>
+          <span class="pill">监听者：<span id="g-listener">—</span></span>
+          <span class="pill">队列：<span id="g-queue">0</span></span>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="n" id="g-forwarded">0</div><div class="l">已搬运</div></div>
+          <div class="stat"><div class="n" id="g-errors">0</div><div class="l">失败</div></div>
+          <div class="stat"><div class="n" id="g-started" style="font-size:13px">—</div><div class="l">启动时间</div></div>
+          <div class="stat"><div class="n" id="g-last" style="font-size:13px">—</div><div class="l">最近一条</div></div>
+        </div>
+        <table class="mtab" id="g-members-tab">
+          <thead><tr><th>成员账号</th><th>状态</th><th>已发送</th><th>失败</th></tr></thead>
+          <tbody id="g-members-body"></tbody>
+        </table>
+        <div id="g-problems" class="hint"></div>
+        <div class="btns">
+          <button class="btn green" id="btn-gstart">▶ 启动组</button>
+          <button class="btn red" id="btn-gstop">■ 停止组</button>
+        </div>
       </div>
+
+      <div class="card">
+        <h2>组配置</h2>
+        <div class="hint" style="margin-bottom:6px">运行中无法修改配置，请先停止组。组内每个成员账号都需已登录、且能访问下面的源/目标频道。</div>
+        <label>组名称</label>
+        <input type="text" id="g-name" placeholder="例如：搬运均衡组1" />
+        <label>成员账号（勾选要参与分摊的已登录账号）</label>
+        <div class="members" id="g-members"></div>
+        <label>源频道（每行一个）</label>
+        <textarea id="g-source_channels" placeholder="@source_1&#10;@source_2"></textarea>
+        <label>目标频道</label>
+        <input type="text" id="g-target_channel" placeholder="@my_target_channel" />
+        <div class="row">
+          <div><label>搬运模式</label>
+            <select id="g-mode">
+              <option value="copy">copy（去来源标签）</option>
+              <option value="forward">forward（保留来源）</option>
+            </select></div>
+          <div><label>调度策略</label>
+            <select id="g-strategy">
+              <option value="balanced">balanced（挑最早可用的账号）</option>
+              <option value="round_robin">round_robin（严格轮转）</option>
+            </select></div>
+        </div>
+        <div class="row">
+          <div><label>每账号发送间隔秒数（节流，越大越不易限速）</label><input type="number" id="g-per_account_delay" min="0" /></div>
+          <div><label>启动时回填历史视频数（0=不回填）</label><input type="number" id="g-backfill_limit" min="0" /></div>
+        </div>
+        <div class="checkbox"><input type="checkbox" id="g-keep_caption" /><label style="margin:0">保留原文案（仅 copy）</label></div>
+        <div class="btns"><button class="btn" id="btn-gsave">💾 保存组配置</button></div>
+      </div>
+
+      <div class="card"><h2>组运行日志</h2><div class="logs" id="g-logs"></div></div>
     </div>
   </div>
 </div>
@@ -197,13 +260,19 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-let state = { accounts: [], currentId: null, dirty: false, passwordEnabled: false };
+let state = {
+  accounts: [], groups: [],
+  view: null,            // 'account' | 'group'
+  currentId: null, currentGroupId: null,
+  dirty: false, gdirty: false, passwordEnabled: false
+};
 
 function toast(msg, isErr = false) {
   const t = $("toast"); t.textContent = msg;
   t.className = "toast show" + (isErr ? " err" : "");
   setTimeout(() => { t.className = "toast"; }, 2600);
 }
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
 
 async function api(path, method = "GET", body = null) {
   const opt = { method, headers: { "Content-Type": "application/json" }, credentials: "include" };
@@ -218,19 +287,14 @@ async function api(path, method = "GET", body = null) {
 // ---------------- 面板登录 ----------------
 function showGate() { $("gate").classList.remove("hidden"); }
 function hideGate() { $("gate").classList.add("hidden"); }
-
 $("gate-login").onclick = async () => {
-  try {
-    await api("/api/auth/login", "POST", { password: $("gate-pw").value });
-    $("gate-pw").value = ""; hideGate(); init();
-  } catch (e) { toast(e.message, true); }
+  try { await api("/api/auth/login", "POST", { password: $("gate-pw").value });
+    $("gate-pw").value = ""; hideGate(); init(); } catch (e) { toast(e.message, true); }
 };
 $("gate-pw").addEventListener("keydown", e => { if (e.key === "Enter") $("gate-login").click(); });
-
 $("btn-panel-logout").onclick = async () => {
   try { await api("/api/auth/logout", "POST"); showGate(); } catch (e) { toast(e.message, true); }
 };
-
 $("btn-setpw").onclick = async () => {
   const cur = state.passwordEnabled ? prompt("请输入【当前】访问密码（若已登录可留空直接确定）：") : null;
   if (state.passwordEnabled && cur === null) return;
@@ -238,53 +302,67 @@ $("btn-setpw").onclick = async () => {
   if (np === null) return;
   try {
     const r = await api("/api/auth/set-password", "POST", { new_password: np, current_password: cur || "" });
-    toast(r.message || "已更新");
-    if (np) showGate(); else init();
+    toast(r.message || "已更新"); if (np) showGate(); else init();
   } catch (e) { toast(e.message, true); }
 };
 
-// ---------------- 账号列表 ----------------
-function renderAccountList() {
-  const box = $("acct-list"); box.innerHTML = "";
+// ---------------- 侧栏 ----------------
+function renderSidebar() {
+  const al = $("acct-list"); al.innerHTML = "";
   state.accounts.forEach(a => {
     const el = document.createElement("div");
-    el.className = "acct-item" + (a.id === state.currentId ? " active" : "");
+    el.className = "item" + (state.view === "account" && a.id === state.currentId ? " active" : "");
     const dot = a.state === "running" ? "on" : (a.authorized ? "warn" : "off");
     el.innerHTML = `<span class="dot ${dot}"></span><span class="nm">${escapeHtml(a.name)}</span>`;
     el.onclick = () => selectAccount(a.id);
-    box.appendChild(el);
+    al.appendChild(el);
   });
-  $("empty-tip").classList.toggle("hidden", state.accounts.length > 0);
-  $("account-panel").classList.toggle("hidden", !state.currentId);
+  const gl = $("group-list"); gl.innerHTML = "";
+  state.groups.forEach(g => {
+    const el = document.createElement("div");
+    el.className = "item" + (state.view === "group" && g.id === state.currentGroupId ? " active" : "");
+    const dot = g.state === "running" ? "on" : "off";
+    el.innerHTML = `<span class="dot ${dot}"></span><span class="nm">${escapeHtml(g.name)}</span>`;
+    el.onclick = () => selectGroup(g.id);
+    gl.appendChild(el);
+  });
+  const nothing = !state.view;
+  $("empty-tip").classList.toggle("hidden", !nothing && (state.accounts.length || state.groups.length));
+  $("account-panel").classList.toggle("hidden", state.view !== "account");
+  $("group-panel").classList.toggle("hidden", state.view !== "group");
 }
 
-function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+function selectAccount(id) { state.view = "account"; state.currentId = id; state.dirty = false; renderSidebar(); refreshAccountPanel(); refreshLogs(); }
+function selectGroup(id) { state.view = "group"; state.currentGroupId = id; state.gdirty = false; renderSidebar(); refreshGroupPanel(); refreshLogs(); }
 
-function selectAccount(id) { state.currentId = id; state.dirty = false; renderAccountList(); refreshCurrent(true); refreshLogs(); }
-
-$("btn-add").onclick = async () => {
-  try {
-    const a = await api("/api/accounts", "POST", { name: "账号" + (state.accounts.length + 1) });
-    await refreshAccounts(); selectAccount(a.id); toast("已添加账号");
-  } catch (e) { toast(e.message, true); }
+$("btn-add-acct").onclick = async () => {
+  try { const a = await api("/api/accounts", "POST", { name: "账号" + (state.accounts.length + 1) });
+    await refreshLists(); selectAccount(a.id); toast("已添加账号"); } catch (e) { toast(e.message, true); }
 };
-
-$("btn-del").onclick = async () => {
+$("btn-add-group").onclick = async () => {
+  try { const g = await api("/api/groups", "POST", { name: "均衡组" + (state.groups.length + 1) });
+    await refreshLists(); selectGroup(g.id); toast("已新建均衡组"); } catch (e) { toast(e.message, true); }
+};
+$("btn-del-acct").onclick = async () => {
   if (!state.currentId) return;
-  if (!confirm("确定删除该账号？将退出其登录并移除配置。")) return;
-  try {
-    await api("/api/accounts/" + state.currentId, "DELETE");
-    state.currentId = null; await refreshAccounts(); toast("已删除");
-  } catch (e) { toast(e.message, true); }
+  if (!confirm("确定删除该账号？将退出其登录并移除配置（也会从各负载均衡组成员中移除）。")) return;
+  try { await api("/api/accounts/" + state.currentId, "DELETE");
+    state.view = null; state.currentId = null; await refreshLists(); toast("已删除"); } catch (e) { toast(e.message, true); }
+};
+$("btn-del-group").onclick = async () => {
+  if (!state.currentGroupId) return;
+  if (!confirm("确定删除该负载均衡组？")) return;
+  try { await api("/api/groups/" + state.currentGroupId, "DELETE");
+    state.view = null; state.currentGroupId = null; await refreshLists(); toast("已删除"); } catch (e) { toast(e.message, true); }
 };
 
-// ---------------- 当前账号渲染 ----------------
+// ---------------- 账号面板 ----------------
 ["name","api_id","api_hash","source_channels","target_channel","mode","session_name",
  "backfill_limit","send_delay","keep_caption"].forEach(id => {
   document.addEventListener("input", (e) => { if (e.target.id === id) state.dirty = true; });
 });
 
-function fillSettings(s) {
+function fillAccount(s) {
   if (state.dirty) return;
   $("name").value = s.name || "";
   $("api_id").value = s.api_id || "";
@@ -298,27 +376,25 @@ function fillSettings(s) {
   $("send_delay").value = s.send_delay ?? 3;
   $("keep_caption").checked = !!s.keep_caption;
 }
-
-function renderCurrent(st) {
+function renderAccount(st) {
   $("acct-title").textContent = st.name || "账号";
   const running = st.state === "running";
-  $("dot-state").className = "dot " + (running ? "on" : "off");
-  $("state-text").textContent = running ? "监控中" : "已停止";
-  $("dot-auth").className = "dot " + (st.authorized ? "on" : (st.awaiting_code ? "warn" : "off"));
-  $("auth-text").textContent = st.authorized ? "已登录" : (st.awaiting_code ? "等待验证码" : "未登录");
-  $("st-forwarded").textContent = st.stats.forwarded ?? 0;
-  $("st-errors").textContent = st.stats.errors ?? 0;
-  $("st-started").textContent = st.stats.started_at_str || "—";
-  $("st-last").textContent = st.stats.last_video_at_str || "—";
-  $("problems").textContent = (st.problems && st.problems.length) ? ("⚠ 待完善：" + st.problems.join("、")) : "";
+  $("a-dot-state").className = "dot " + (running ? "on" : "off");
+  $("a-state-text").textContent = running ? "监控中" : "已停止";
+  $("a-dot-auth").className = "dot " + (st.authorized ? "on" : (st.awaiting_code ? "warn" : "off"));
+  $("a-auth-text").textContent = st.authorized ? "已登录" : (st.awaiting_code ? "等待验证码" : "未登录");
+  $("a-forwarded").textContent = st.stats.forwarded ?? 0;
+  $("a-errors").textContent = st.stats.errors ?? 0;
+  $("a-started").textContent = st.stats.started_at_str || "—";
+  $("a-last").textContent = st.stats.last_video_at_str || "—";
+  $("a-problems").textContent = (st.problems && st.problems.length) ? ("⚠ 待完善：" + st.problems.join("、")) : "";
   $("btn-start").disabled = running || !st.authorized;
   $("btn-stop").disabled = !running;
   $("login-form").classList.toggle("hidden", st.authorized);
   $("logged-in").classList.toggle("hidden", !st.authorized);
-  fillSettings(st.settings);
+  fillAccount(st.settings);
 }
-
-function collectSettings() {
+function collectAccount() {
   return {
     name: $("name").value.trim() || "新账号",
     api_id: parseInt($("api_id").value || "0", 10),
@@ -332,76 +408,154 @@ function collectSettings() {
     send_delay: parseInt($("send_delay").value || "0", 10),
   };
 }
-
-const cur = () => state.currentId;
-
+const aid = () => state.currentId;
 $("btn-save").onclick = async () => {
-  try { await api(`/api/accounts/${cur()}/settings`, "POST", collectSettings());
-    state.dirty = false; toast("配置已保存"); refreshAccounts(); refreshCurrent(true); }
-  catch (e) { toast(e.message, true); }
+  try { await api(`/api/accounts/${aid()}/settings`, "POST", collectAccount());
+    state.dirty = false; toast("配置已保存"); refreshLists(); refreshAccountPanel(); } catch (e) { toast(e.message, true); }
 };
-
 $("btn-sendcode").onclick = async () => {
-  try {
-    await api(`/api/accounts/${cur()}/settings`, "POST", collectSettings()); state.dirty = false;
-    const phone = $("phone").value.trim();
-    if (!phone) return toast("请填写手机号", true);
-    const r = await api(`/api/accounts/${cur()}/login/send-code`, "POST", { phone });
-    toast(r.message || "验证码已发送"); refreshCurrent(true);
-  } catch (e) { toast(e.message, true); }
+  try { await api(`/api/accounts/${aid()}/settings`, "POST", collectAccount()); state.dirty = false;
+    const phone = $("phone").value.trim(); if (!phone) return toast("请填写手机号", true);
+    const r = await api(`/api/accounts/${aid()}/login/send-code`, "POST", { phone });
+    toast(r.message || "验证码已发送"); refreshAccountPanel(); } catch (e) { toast(e.message, true); }
 };
-
 $("btn-verify").onclick = async () => {
-  try {
-    const code = $("code").value.trim();
-    if (!code) return toast("请填写验证码", true);
-    const r = await api(`/api/accounts/${cur()}/login/verify`, "POST", { code, password: $("tfa").value });
-    toast(r.message || "登录成功"); $("code").value = ""; $("tfa").value = ""; refreshCurrent(true); refreshAccounts();
-  } catch (e) { toast(e.message, true); }
+  try { const code = $("code").value.trim(); if (!code) return toast("请填写验证码", true);
+    const r = await api(`/api/accounts/${aid()}/login/verify`, "POST", { code, password: $("tfa").value });
+    toast(r.message || "登录成功"); $("code").value = ""; $("tfa").value = ""; refreshAccountPanel(); refreshLists(); } catch (e) { toast(e.message, true); }
 };
-
 $("btn-logout").onclick = async () => {
-  try { await api(`/api/accounts/${cur()}/logout`, "POST"); toast("已退出"); refreshCurrent(true); refreshAccounts(); }
-  catch (e) { toast(e.message, true); }
+  try { await api(`/api/accounts/${aid()}/logout`, "POST"); toast("已退出"); refreshAccountPanel(); refreshLists(); } catch (e) { toast(e.message, true); }
 };
-
 $("btn-start").onclick = async () => {
-  try { renderCurrent(await api(`/api/accounts/${cur()}/start`, "POST")); toast("已启动"); refreshAccounts(); }
-  catch (e) { toast(e.message, true); }
+  try { renderAccount(await api(`/api/accounts/${aid()}/start`, "POST")); toast("已启动"); refreshLists(); } catch (e) { toast(e.message, true); }
 };
 $("btn-stop").onclick = async () => {
-  try { renderCurrent(await api(`/api/accounts/${cur()}/stop`, "POST")); toast("已停止"); refreshAccounts(); }
-  catch (e) { toast(e.message, true); }
+  try { renderAccount(await api(`/api/accounts/${aid()}/stop`, "POST")); toast("已停止"); refreshLists(); } catch (e) { toast(e.message, true); }
+};
+
+// ---------------- 组面板 ----------------
+["g-name","g-source_channels","g-target_channel","g-mode","g-strategy",
+ "g-per_account_delay","g-backfill_limit","g-keep_caption"].forEach(id => {
+  document.addEventListener("input", (e) => { if (e.target.id === id) state.gdirty = true; });
+});
+
+function fillGroup(st) {
+  const s = st.settings;
+  // 成员勾选框（始终用最新账号列表渲染）
+  const box = $("g-members"); box.innerHTML = "";
+  if (!state.accounts.length) {
+    box.innerHTML = '<div class="hint">还没有账号，请先在上方添加并登录账号。</div>';
+  }
+  const selected = new Set(s.member_ids || []);
+  state.accounts.forEach(a => {
+    const row = document.createElement("label"); row.className = "mrow";
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.className = "gmember";
+    cb.value = a.id; cb.checked = selected.has(a.id);
+    cb.onchange = () => { state.gdirty = true; };
+    const tag = a.authorized ? "" : "（未登录）";
+    row.appendChild(cb);
+    const span = document.createElement("span"); span.textContent = a.name + tag; row.appendChild(span);
+    box.appendChild(row);
+  });
+  if (state.gdirty) return;
+  $("g-name").value = s.name || "";
+  $("g-source_channels").value = (s.source_channels || []).join("\n");
+  $("g-target_channel").value = s.target_channel || "";
+  $("g-mode").value = s.mode || "copy";
+  $("g-strategy").value = s.strategy || "balanced";
+  $("g-per_account_delay").value = s.per_account_delay ?? 5;
+  $("g-backfill_limit").value = s.backfill_limit ?? 0;
+  $("g-keep_caption").checked = !!s.keep_caption;
+}
+function renderGroup(st) {
+  $("g-title").textContent = st.name || "负载均衡组";
+  const running = st.state === "running";
+  $("g-dot-state").className = "dot " + (running ? "on" : "off");
+  $("g-state-text").textContent = running ? "运行中" : "已停止";
+  $("g-listener").textContent = st.listener || "—";
+  $("g-queue").textContent = st.queue_size ?? 0;
+  $("g-forwarded").textContent = st.stats.forwarded ?? 0;
+  $("g-errors").textContent = st.stats.errors ?? 0;
+  $("g-started").textContent = st.stats.started_at_str || "—";
+  $("g-last").textContent = st.stats.last_video_at_str || "—";
+  const body = $("g-members-body"); body.innerHTML = "";
+  (st.members || []).forEach(m => {
+    const tr = document.createElement("tr");
+    const stt = !m.authorized ? "未登录" : (m.cooling ? "冷却中" : "就绪");
+    tr.innerHTML = `<td>${escapeHtml(m.name)}</td><td>${stt}</td><td>${m.sent}</td><td>${m.errors}</td>`;
+    body.appendChild(tr);
+  });
+  $("g-problems").textContent = (st.problems && st.problems.length) ? ("⚠ 待完善：" + st.problems.join("、")) : "";
+  $("btn-gstart").disabled = running;
+  $("btn-gstop").disabled = !running;
+  fillGroup(st);
+}
+function collectGroup() {
+  const members = Array.from(document.querySelectorAll(".gmember")).filter(c => c.checked).map(c => c.value);
+  return {
+    name: $("g-name").value.trim() || "新负载均衡组",
+    member_ids: members,
+    source_channels: $("g-source_channels").value.split("\n").map(s => s.trim()).filter(Boolean),
+    target_channel: $("g-target_channel").value.trim(),
+    mode: $("g-mode").value,
+    keep_caption: $("g-keep_caption").checked,
+    strategy: $("g-strategy").value,
+    per_account_delay: parseInt($("g-per_account_delay").value || "0", 10),
+    backfill_limit: parseInt($("g-backfill_limit").value || "0", 10),
+  };
+}
+const gid = () => state.currentGroupId;
+$("btn-gsave").onclick = async () => {
+  try { await api(`/api/groups/${gid()}/settings`, "POST", collectGroup());
+    state.gdirty = false; toast("组配置已保存"); refreshLists(); refreshGroupPanel(); } catch (e) { toast(e.message, true); }
+};
+$("btn-gstart").onclick = async () => {
+  try { renderGroup(await api(`/api/groups/${gid()}/start`, "POST")); toast("均衡组已启动"); refreshLists(); } catch (e) { toast(e.message, true); }
+};
+$("btn-gstop").onclick = async () => {
+  try { renderGroup(await api(`/api/groups/${gid()}/stop`, "POST")); toast("均衡组已停止"); refreshLists(); } catch (e) { toast(e.message, true); }
 };
 
 // ---------------- 刷新 ----------------
-async function refreshAccounts() {
+async function refreshLists() {
   try {
-    const { accounts } = await api("/api/accounts");
-    state.accounts = accounts;
-    if (!state.currentId && accounts.length) state.currentId = accounts[0].id;
-    if (state.currentId && !accounts.find(a => a.id === state.currentId))
-      state.currentId = accounts.length ? accounts[0].id : null;
-    renderAccountList();
-    const c = accounts.find(a => a.id === state.currentId);
-    if (c) renderCurrent(c);
+    const [a, g] = await Promise.all([api("/api/accounts"), api("/api/groups")]);
+    state.accounts = a.accounts; state.groups = g.groups;
+    // 校正当前选择
+    if (state.view === "account" && state.currentId && !state.accounts.find(x => x.id === state.currentId)) {
+      state.view = null; state.currentId = null;
+    }
+    if (state.view === "group" && state.currentGroupId && !state.groups.find(x => x.id === state.currentGroupId)) {
+      state.view = null; state.currentGroupId = null;
+    }
+    renderSidebar();
+    if (state.view === "account") { const c = state.accounts.find(x => x.id === state.currentId); if (c) renderAccount(c); }
+    if (state.view === "group") { const c = state.groups.find(x => x.id === state.currentGroupId); if (c) renderGroup(c); }
   } catch (e) { /* 401 已处理 */ }
 }
-
-async function refreshCurrent(force = false) {
-  if (!state.currentId) return;
-  try { renderCurrent(await api(`/api/accounts/${state.currentId}/status`)); } catch (e) {}
+async function refreshAccountPanel() {
+  if (state.view !== "account" || !state.currentId) return;
+  try { renderAccount(await api(`/api/accounts/${state.currentId}/status`)); } catch (e) {}
 }
-
+async function refreshGroupPanel() {
+  if (state.view !== "group" || !state.currentGroupId) return;
+  try { renderGroup(await api(`/api/groups/${state.currentGroupId}/status`)); } catch (e) {}
+}
 async function refreshLogs() {
-  if (!state.currentId) return;
   try {
-    const { logs } = await api(`/api/accounts/${state.currentId}/logs?limit=200`);
-    const box = $("logs");
-    const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
-    box.textContent = logs.join("\n");
-    if (atBottom) box.scrollTop = box.scrollHeight;
+    if (state.view === "account" && state.currentId) {
+      const { logs } = await api(`/api/accounts/${state.currentId}/logs?limit=200`); writeLogs("a-logs", logs);
+    } else if (state.view === "group" && state.currentGroupId) {
+      const { logs } = await api(`/api/groups/${state.currentGroupId}/logs?limit=200`); writeLogs("g-logs", logs);
+    }
   } catch (e) {}
+}
+function writeLogs(boxId, logs) {
+  const box = $(boxId); if (!box) return;
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+  box.textContent = logs.join("\n");
+  if (atBottom) box.scrollTop = box.scrollHeight;
 }
 
 async function init() {
@@ -411,11 +565,16 @@ async function init() {
   $("btn-setpw").textContent = auth.password_enabled ? "修改密码" : "设置密码";
   if (auth.password_enabled && !auth.authed) { showGate(); return; }
   hideGate();
-  await refreshAccounts();
+  await refreshLists();
   refreshLogs();
 }
 
-setInterval(() => { refreshAccounts(); refreshLogs(); }, 3000);
+setInterval(() => {
+  refreshLists();
+  if (state.view === "account") refreshAccountPanel();
+  if (state.view === "group") refreshGroupPanel();
+  refreshLogs();
+}, 3000);
 init();
 </script>
 </body>

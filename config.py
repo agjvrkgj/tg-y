@@ -168,12 +168,82 @@ class AccountSettings:
         return problems
 
 
+# ------------------------- 负载均衡组设置 -------------------------
+@dataclass
+class GroupSettings:
+    """一个负载均衡组：多个账号共同把源频道视频搬运到目标频道。
+
+    发送任务会在 member_ids 指定的账号间轮转分摊，以规避单账号限速。
+    要求：组内每个账号都需能访问源频道与目标频道。
+    """
+
+    id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    name: str = "新负载均衡组"
+    member_ids: List[str] = field(default_factory=list)
+    source_channels: List[str] = field(default_factory=list)
+    target_channel: str = ""
+    mode: str = "copy"  # copy | forward
+    keep_caption: bool = True
+    # 每个账号两次发送之间的最小间隔秒数（节流，越大越不易限速）
+    per_account_delay: int = 5
+    # 调度策略：balanced=挑最早可用的账号；round_robin=严格轮转
+    strategy: str = "balanced"
+    backfill_limit: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "GroupSettings":
+        g = cls(
+            id=str(data.get("id") or uuid.uuid4().hex[:12]),
+            name=str(data.get("name") or "新负载均衡组").strip() or "新负载均衡组",
+        )
+        members = data.get("member_ids") or []
+        g.member_ids = [str(m).strip() for m in members if str(m).strip()]
+        g.source_channels = _split_sources(data.get("source_channels"))
+        g.target_channel = str(data.get("target_channel") or "").strip()
+        g.mode = str(data.get("mode") or "copy").strip().lower()
+        if g.mode not in {"copy", "forward"}:
+            g.mode = "copy"
+        g.keep_caption = bool(data.get("keep_caption", True))
+        g.strategy = str(data.get("strategy") or "balanced").strip().lower()
+        if g.strategy not in {"balanced", "round_robin"}:
+            g.strategy = "balanced"
+        try:
+            g.per_account_delay = max(0, int(data.get("per_account_delay") or 0))
+        except (TypeError, ValueError):
+            g.per_account_delay = 5
+        try:
+            g.backfill_limit = max(0, int(data.get("backfill_limit") or 0))
+        except (TypeError, ValueError):
+            g.backfill_limit = 0
+        return g
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    def resolved_sources(self) -> List[ChannelId]:
+        return [c for c in (parse_channel(s) for s in self.source_channels) if c is not None]
+
+    def resolved_target(self) -> Optional[ChannelId]:
+        return parse_channel(self.target_channel)
+
+    def validate(self) -> List[str]:
+        problems: List[str] = []
+        if not self.member_ids:
+            problems.append("至少需要选择一个成员账号")
+        if not self.resolved_sources():
+            problems.append("至少需要一个源频道")
+        if not self.resolved_target():
+            problems.append("需要配置目标频道")
+        return problems
+
+
 # ------------------------- 应用级配置 -------------------------
 @dataclass
 class AppConfig:
     password_salt: str = ""
     password_hash: str = ""
     accounts: List[AccountSettings] = field(default_factory=list)
+    groups: List[GroupSettings] = field(default_factory=list)
 
     # ----- 持久化 -----
     @classmethod
@@ -198,6 +268,9 @@ class AppConfig:
         elif data.get("api_id") or data.get("api_hash"):
             # 兼容旧的单账号 settings.json（字段直接在顶层）
             cfg.accounts = [AccountSettings.from_dict(data)]
+        groups_raw = data.get("groups")
+        if isinstance(groups_raw, list):
+            cfg.groups = [GroupSettings.from_dict(g) for g in groups_raw]
         return cfg
 
     @classmethod
@@ -236,6 +309,7 @@ class AppConfig:
                     "password_salt": self.password_salt,
                     "password_hash": self.password_hash,
                     "accounts": [a.to_dict() for a in self.accounts],
+                    "groups": [g.to_dict() for g in self.groups],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -254,7 +328,24 @@ class AppConfig:
         acct = self.get(account_id)
         if acct:
             self.accounts = [a for a in self.accounts if a.id != account_id]
+        # 同时从所有组的成员里剔除该账号
+        for g in self.groups:
+            if account_id in g.member_ids:
+                g.member_ids = [m for m in g.member_ids if m != account_id]
         return acct
+
+    # ----- 组管理 -----
+    def get_group(self, group_id: str) -> Optional[GroupSettings]:
+        return next((g for g in self.groups if g.id == group_id), None)
+
+    def add_group(self, group: GroupSettings) -> None:
+        self.groups.append(group)
+
+    def remove_group(self, group_id: str) -> Optional[GroupSettings]:
+        g = self.get_group(group_id)
+        if g:
+            self.groups = [x for x in self.groups if x.id != group_id]
+        return g
 
     # ----- 密码 -----
     @property
