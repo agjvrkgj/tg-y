@@ -185,6 +185,13 @@
         </div>
         <div class="checkbox"><input type="checkbox" id="keep_caption" /><label style="margin:0">保留原文案（仅 copy）</label></div>
 
+        <h2 style="margin-top:18px">视频处理（仅 copy 模式，需服务器安装 ffmpeg）</h2>
+        <div class="row">
+          <div><label>删除视频开头秒数（0=不裁剪）</label><input type="number" id="trim_start_seconds" min="0" placeholder="例如 10" /></div>
+          <div style="display:flex; align-items:flex-end"><div class="checkbox" style="margin:0"><input type="checkbox" id="album_cover" /><label style="margin:0">相册(视频+图片)时用图片当视频封面</label></div></div>
+        </div>
+        <div class="hint">裁剪需要服务器安装 ffmpeg/ffprobe；未安装时会自动跳过裁剪、按原视频上传。</div>
+
         <h2 style="margin-top:18px">内容过滤（仅 copy 模式可改写文案）</h2>
         <label>屏蔽关键词（每行一个；命中规则见下方开关）</label>
         <textarea id="cf_block_keywords" placeholder="广告&#10;招商&#10;客服"></textarea>
@@ -258,6 +265,12 @@
           <div><label>启动时回填历史视频数（0=不回填）</label><input type="number" id="g-backfill_limit" min="0" /></div>
         </div>
         <div class="checkbox"><input type="checkbox" id="g-keep_caption" /><label style="margin:0">保留原文案（仅 copy）</label></div>
+
+        <h2 style="margin-top:18px">视频处理（仅 copy 模式，需服务器安装 ffmpeg）</h2>
+        <div class="row">
+          <div><label>删除视频开头秒数（0=不裁剪）</label><input type="number" id="g-trim_start_seconds" min="0" placeholder="例如 10" /></div>
+          <div style="display:flex; align-items:flex-end"><div class="checkbox" style="margin:0"><input type="checkbox" id="g-album_cover" /><label style="margin:0">相册时用图片当视频封面</label></div></div>
+        </div>
 
         <h2 style="margin-top:18px">内容过滤（仅 copy 模式可改写文案）</h2>
         <label>屏蔽关键词（每行一个）</label>
@@ -378,7 +391,7 @@ $("btn-del-group").onclick = async () => {
 
 // ---------------- 账号面板 ----------------
 ["name","api_id","api_hash","source_channels","target_channel","mode","session_name",
- "backfill_limit","send_delay","keep_caption",
+ "backfill_limit","send_delay","keep_caption","trim_start_seconds","album_cover",
  "cf_block_keywords","cf_remove_links","cf_remove_mentions","cf_drop_on_match","cf_replacement"].forEach(id => {
   document.addEventListener("input", (e) => { if (e.target.id === id) state.dirty = true; });
 });
@@ -396,6 +409,8 @@ function fillAccount(s) {
   $("backfill_limit").value = s.backfill_limit ?? 0;
   $("send_delay").value = s.send_delay ?? 3;
   $("keep_caption").checked = !!s.keep_caption;
+  $("trim_start_seconds").value = s.trim_start_seconds ?? 0;
+  $("album_cover").checked = s.album_cover !== false;
   const cf = s.content_filter || {};
   $("cf_block_keywords").value = (cf.block_keywords || []).join("\n");
   $("cf_remove_links").checked = !!cf.remove_links;
@@ -433,6 +448,8 @@ function collectAccount() {
     keep_caption: $("keep_caption").checked,
     backfill_limit: parseInt($("backfill_limit").value || "0", 10),
     send_delay: parseInt($("send_delay").value || "0", 10),
+    trim_start_seconds: parseInt($("trim_start_seconds").value || "0", 10),
+    album_cover: $("album_cover").checked,
     content_filter: collectFilter(""),
   };
 }
@@ -473,7 +490,7 @@ $("btn-stop").onclick = async () => {
 
 // ---------------- 组面板 ----------------
 ["g-name","g-source_channels","g-target_channel","g-mode","g-strategy",
- "g-per_account_delay","g-backfill_limit","g-keep_caption",
+ "g-per_account_delay","g-backfill_limit","g-keep_caption","g-trim_start_seconds","g-album_cover",
  "g-cf_block_keywords","g-cf_remove_links","g-cf_remove_mentions","g-cf_drop_on_match","g-cf_replacement"].forEach(id => {
   document.addEventListener("input", (e) => { if (e.target.id === id) state.gdirty = true; });
 });
@@ -505,6 +522,8 @@ function fillGroup(st) {
   $("g-per_account_delay").value = s.per_account_delay ?? 5;
   $("g-backfill_limit").value = s.backfill_limit ?? 0;
   $("g-keep_caption").checked = !!s.keep_caption;
+  $("g-trim_start_seconds").value = s.trim_start_seconds ?? 0;
+  $("g-album_cover").checked = s.album_cover !== false;
   const cf = s.content_filter || {};
   $("g-cf_block_keywords").value = (cf.block_keywords || []).join("\n");
   $("g-cf_remove_links").checked = !!cf.remove_links;
@@ -547,6 +566,8 @@ function collectGroup() {
     strategy: $("g-strategy").value,
     per_account_delay: parseInt($("g-per_account_delay").value || "0", 10),
     backfill_limit: parseInt($("g-backfill_limit").value || "0", 10),
+    trim_start_seconds: parseInt($("g-trim_start_seconds").value || "0", 10),
+    album_cover: $("g-album_cover").checked,
     content_filter: collectFilter("g-"),
   };
 }

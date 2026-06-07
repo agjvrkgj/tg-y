@@ -85,6 +85,8 @@ class SettingsBody(BaseModel):
     backfill_limit: int = 0
     send_delay: int = 3
     content_filter: ContentFilterBody = ContentFilterBody()
+    trim_start_seconds: int = 0
+    album_cover: bool = True
 
 
 class PhoneBody(BaseModel):
@@ -120,6 +122,8 @@ class GroupSettingsBody(BaseModel):
     strategy: str = "balanced"
     backfill_limit: int = 0
     content_filter: ContentFilterBody = ContentFilterBody()
+    trim_start_seconds: int = 0
+    album_cover: bool = True
 
 
 class AddGroupBody(BaseModel):
