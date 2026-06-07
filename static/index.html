@@ -184,6 +184,16 @@
           <div><label>每条间隔秒数（防限流）</label><input type="number" id="send_delay" min="0" /></div>
         </div>
         <div class="checkbox"><input type="checkbox" id="keep_caption" /><label style="margin:0">保留原文案（仅 copy）</label></div>
+
+        <h2 style="margin-top:18px">内容过滤（仅 copy 模式可改写文案）</h2>
+        <label>屏蔽关键词（每行一个；命中规则见下方开关）</label>
+        <textarea id="cf_block_keywords" placeholder="广告&#10;招商&#10;客服"></textarea>
+        <div class="checkbox"><input type="checkbox" id="cf_remove_links" /><label style="margin:0">移除文案里的链接（http/t.me/裸域名）</label></div>
+        <div class="checkbox"><input type="checkbox" id="cf_remove_mentions" /><label style="margin:0">移除文案里的 @提及</label></div>
+        <div class="checkbox"><input type="checkbox" id="cf_drop_on_match" /><label style="margin:0">命中屏蔽关键词时丢弃整条（不搬运）；不勾选则只删除含该词的行</label></div>
+        <label>替换文本（被移除的链接/@ 用它替换，默认留空即删除）</label>
+        <input type="text" id="cf_replacement" placeholder="留空表示直接删除" />
+
         <div class="btns"><button class="btn" id="btn-save">💾 保存配置</button></div>
         <div class="hint">独立账号搬运。若该账号已编入某负载均衡组，建议不要再单独启动它监控相同源频道，以免重复。</div>
       </div>
@@ -248,6 +258,16 @@
           <div><label>启动时回填历史视频数（0=不回填）</label><input type="number" id="g-backfill_limit" min="0" /></div>
         </div>
         <div class="checkbox"><input type="checkbox" id="g-keep_caption" /><label style="margin:0">保留原文案（仅 copy）</label></div>
+
+        <h2 style="margin-top:18px">内容过滤（仅 copy 模式可改写文案）</h2>
+        <label>屏蔽关键词（每行一个）</label>
+        <textarea id="g-cf_block_keywords" placeholder="广告&#10;招商&#10;客服"></textarea>
+        <div class="checkbox"><input type="checkbox" id="g-cf_remove_links" /><label style="margin:0">移除文案里的链接</label></div>
+        <div class="checkbox"><input type="checkbox" id="g-cf_remove_mentions" /><label style="margin:0">移除文案里的 @提及</label></div>
+        <div class="checkbox"><input type="checkbox" id="g-cf_drop_on_match" /><label style="margin:0">命中屏蔽关键词时丢弃整条（不搬运）；不勾选则只删除含该词的行</label></div>
+        <label>替换文本（默认留空即删除）</label>
+        <input type="text" id="g-cf_replacement" placeholder="留空表示直接删除" />
+
         <div class="btns"><button class="btn" id="btn-gsave">💾 保存组配置</button></div>
       </div>
 
@@ -358,7 +378,8 @@ $("btn-del-group").onclick = async () => {
 
 // ---------------- 账号面板 ----------------
 ["name","api_id","api_hash","source_channels","target_channel","mode","session_name",
- "backfill_limit","send_delay","keep_caption"].forEach(id => {
+ "backfill_limit","send_delay","keep_caption",
+ "cf_block_keywords","cf_remove_links","cf_remove_mentions","cf_drop_on_match","cf_replacement"].forEach(id => {
   document.addEventListener("input", (e) => { if (e.target.id === id) state.dirty = true; });
 });
 
@@ -375,6 +396,12 @@ function fillAccount(s) {
   $("backfill_limit").value = s.backfill_limit ?? 0;
   $("send_delay").value = s.send_delay ?? 3;
   $("keep_caption").checked = !!s.keep_caption;
+  const cf = s.content_filter || {};
+  $("cf_block_keywords").value = (cf.block_keywords || []).join("\n");
+  $("cf_remove_links").checked = !!cf.remove_links;
+  $("cf_remove_mentions").checked = !!cf.remove_mentions;
+  $("cf_drop_on_match").checked = !!cf.drop_on_match;
+  $("cf_replacement").value = cf.replacement || "";
 }
 function renderAccount(st) {
   $("acct-title").textContent = st.name || "账号";
@@ -406,6 +433,16 @@ function collectAccount() {
     keep_caption: $("keep_caption").checked,
     backfill_limit: parseInt($("backfill_limit").value || "0", 10),
     send_delay: parseInt($("send_delay").value || "0", 10),
+    content_filter: collectFilter(""),
+  };
+}
+function collectFilter(prefix) {
+  return {
+    block_keywords: $(prefix + "cf_block_keywords").value.split("\n").map(s => s.trim()).filter(Boolean),
+    remove_links: $(prefix + "cf_remove_links").checked,
+    remove_mentions: $(prefix + "cf_remove_mentions").checked,
+    drop_on_match: $(prefix + "cf_drop_on_match").checked,
+    replacement: $(prefix + "cf_replacement").value,
   };
 }
 const aid = () => state.currentId;
@@ -436,7 +473,8 @@ $("btn-stop").onclick = async () => {
 
 // ---------------- 组面板 ----------------
 ["g-name","g-source_channels","g-target_channel","g-mode","g-strategy",
- "g-per_account_delay","g-backfill_limit","g-keep_caption"].forEach(id => {
+ "g-per_account_delay","g-backfill_limit","g-keep_caption",
+ "g-cf_block_keywords","g-cf_remove_links","g-cf_remove_mentions","g-cf_drop_on_match","g-cf_replacement"].forEach(id => {
   document.addEventListener("input", (e) => { if (e.target.id === id) state.gdirty = true; });
 });
 
@@ -467,6 +505,12 @@ function fillGroup(st) {
   $("g-per_account_delay").value = s.per_account_delay ?? 5;
   $("g-backfill_limit").value = s.backfill_limit ?? 0;
   $("g-keep_caption").checked = !!s.keep_caption;
+  const cf = s.content_filter || {};
+  $("g-cf_block_keywords").value = (cf.block_keywords || []).join("\n");
+  $("g-cf_remove_links").checked = !!cf.remove_links;
+  $("g-cf_remove_mentions").checked = !!cf.remove_mentions;
+  $("g-cf_drop_on_match").checked = !!cf.drop_on_match;
+  $("g-cf_replacement").value = cf.replacement || "";
 }
 function renderGroup(st) {
   $("g-title").textContent = st.name || "负载均衡组";
@@ -503,6 +547,7 @@ function collectGroup() {
     strategy: $("g-strategy").value,
     per_account_delay: parseInt($("g-per_account_delay").value || "0", 10),
     backfill_limit: parseInt($("g-backfill_limit").value || "0", 10),
+    content_filter: collectFilter("g-"),
   };
 }
 const gid = () => state.currentGroupId;

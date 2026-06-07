@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -92,6 +93,94 @@ def verify_password(password: str, salt: str, expected_hash: str) -> bool:
     return secrets.compare_digest(actual, expected_hash)
 
 
+# ------------------------- 内容过滤 -------------------------
+# 链接匹配：http(s):// 链接、t.me 链接、裸域名(含常见 TLD)
+_URL_RE = re.compile(
+    r"(?:https?://|www\.)\S+"
+    r"|\b(?:t\.me|telegram\.me|telegram\.dog)/\S+"
+    r"|\b[a-zA-Z0-9-]+\.(?:com|net|org|io|me|cn|cc|xyz|info|top|vip|tv|app|link|shop)\b\S*",
+    re.IGNORECASE,
+)
+# @用户名（@ 后跟 5 位以上字母数字下划线，Telegram 用户名规则的宽松版）
+_MENTION_RE = re.compile(r"@[A-Za-z0-9_]{3,}")
+
+
+@dataclass
+class ContentFilter:
+    """搬运时对文案(caption)做内容过滤的配置。
+
+    - block_keywords：命中其中任意关键词时，按 drop_on_match 决定丢弃整条或仅清洗文案。
+    - remove_links / remove_mentions：从文案中去除链接 / @提及。
+    - replacement：被去除片段的替换文本（默认空串）。
+    - drop_on_match：命中屏蔽关键词时是否直接丢弃整条消息（不搬运）。
+    """
+
+    block_keywords: List[str] = field(default_factory=list)
+    remove_links: bool = False
+    remove_mentions: bool = False
+    replacement: str = ""
+    drop_on_match: bool = False
+
+    @classmethod
+    def from_dict(cls, data: Optional[dict]) -> "ContentFilter":
+        data = data or {}
+        kws = data.get("block_keywords")
+        if isinstance(kws, str):
+            # 允许用换行/逗号分隔的字符串
+            kws = re.split(r"[\n,]", kws)
+        keywords = [str(k).strip() for k in (kws or []) if str(k).strip()]
+        return cls(
+            block_keywords=keywords,
+            remove_links=bool(data.get("remove_links", False)),
+            remove_mentions=bool(data.get("remove_mentions", False)),
+            replacement=str(data.get("replacement") or ""),
+            drop_on_match=bool(data.get("drop_on_match", False)),
+        )
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @property
+    def active(self) -> bool:
+        return bool(self.block_keywords or self.remove_links or self.remove_mentions)
+
+    def matches_keyword(self, text: Optional[str]) -> bool:
+        """文案是否命中任一屏蔽关键词（大小写不敏感）。"""
+        if not text or not self.block_keywords:
+            return False
+        low = text.lower()
+        return any(kw.lower() in low for kw in self.block_keywords)
+
+    def should_drop(self, text: Optional[str]) -> bool:
+        """是否应直接丢弃整条消息：开启 drop_on_match 且命中关键词。"""
+        return self.drop_on_match and self.matches_keyword(text)
+
+    def apply(self, text: Optional[str]) -> Optional[str]:
+        """对文案做清洗，返回处理后的文案（不负责丢弃判断）。
+
+        顺序：去链接 -> 去@提及 -> 删除含屏蔽关键词的整行 -> 规整空白。
+        """
+        if text is None:
+            return None
+        result = text
+        if self.remove_links:
+            result = _URL_RE.sub(self.replacement, result)
+        if self.remove_mentions:
+            result = _MENTION_RE.sub(self.replacement, result)
+        if self.block_keywords and not self.drop_on_match:
+            # 非丢弃模式下：逐行删除包含屏蔽词的行
+            kept = []
+            lows = [kw.lower() for kw in self.block_keywords]
+            for line in result.splitlines():
+                if any(kw in line.lower() for kw in lows):
+                    continue
+                kept.append(line)
+            result = "\n".join(kept)
+        # 规整：合并多余空行与首尾空白
+        result = re.sub(r"\n{3,}", "\n\n", result).strip()
+        return result
+
+
 # ------------------------- 单账号设置 -------------------------
 @dataclass
 class AccountSettings:
@@ -108,6 +197,7 @@ class AccountSettings:
     keep_caption: bool = True
     backfill_limit: int = 0
     send_delay: int = 3
+    content_filter: ContentFilter = field(default_factory=ContentFilter)
 
     def __post_init__(self):
         if not self.session_name:
@@ -136,6 +226,7 @@ class AccountSettings:
             acct.send_delay = int(data.get("send_delay") or 0)
         except (TypeError, ValueError):
             acct.send_delay = 3
+        acct.content_filter = ContentFilter.from_dict(data.get("content_filter"))
         return acct
 
     def to_dict(self) -> dict:
@@ -189,6 +280,7 @@ class GroupSettings:
     # 调度策略：balanced=挑最早可用的账号；round_robin=严格轮转
     strategy: str = "balanced"
     backfill_limit: int = 0
+    content_filter: ContentFilter = field(default_factory=ContentFilter)
 
     @classmethod
     def from_dict(cls, data: dict) -> "GroupSettings":
@@ -215,6 +307,7 @@ class GroupSettings:
             g.backfill_limit = max(0, int(data.get("backfill_limit") or 0))
         except (TypeError, ValueError):
             g.backfill_limit = 0
+        g.content_filter = ContentFilter.from_dict(data.get("content_filter"))
         return g
 
     def to_dict(self) -> dict:
