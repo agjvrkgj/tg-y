@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import shutil
+import tempfile
 import time
 from collections import deque
 from datetime import datetime
@@ -16,8 +19,13 @@ from typing import Deque, Dict, List, Optional
 
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
-from telethon.tl.types import DocumentAttributeVideo, MessageMediaDocument
+from telethon.tl.types import (
+    DocumentAttributeVideo,
+    MessageMediaDocument,
+    MessageMediaPhoto,
+)
 
+import media
 from config import AccountSettings, AppConfig, GroupSettings
 
 logging.basicConfig(
@@ -56,9 +64,9 @@ def is_video_message(message) -> bool:
         if getattr(message, "video_note", None) is not None:
             return False
         return True
-    media = getattr(message, "media", None)
-    if isinstance(media, MessageMediaDocument) and media.document is not None:
-        doc = media.document
+    mm = getattr(message, "media", None)
+    if isinstance(mm, MessageMediaDocument) and mm.document is not None:
+        doc = mm.document
         mime = getattr(doc, "mime_type", "") or ""
         if mime.startswith("video/"):
             return True
@@ -68,6 +76,45 @@ def is_video_message(message) -> bool:
                     return False
                 return True
     return False
+
+
+def is_photo_message(message) -> bool:
+    """判断一条消息是否为图片。"""
+    if message is None:
+        return False
+    if getattr(message, "photo", None) is not None:
+        return True
+    return isinstance(getattr(message, "media", None), MessageMediaPhoto)
+
+
+async def gather_album(client, message) -> List:
+    """若 message 属于一个相册(grouped_id)，返回同相册的全部消息（含自身）；否则返回 [message]。
+
+    通过在源对话里向前后各取若干条、按 grouped_id 过滤实现。
+    """
+    gid = getattr(message, "grouped_id", None)
+    if not gid:
+        return [message]
+    found = {message.id: message}
+    try:
+        # 相册消息 id 连续，向两侧各扩 10 条足够覆盖（相册最多 10 项）
+        ids = list(range(message.id - 10, message.id + 11))
+        siblings = await client.get_messages(message.chat_id, ids=ids)
+        for m in siblings or []:
+            if m is not None and getattr(m, "grouped_id", None) == gid:
+                found[m.id] = m
+    except Exception:  # noqa: BLE001
+        pass
+    return [found[k] for k in sorted(found)]
+
+
+def pick_album_caption(album: List) -> Optional[str]:
+    """取相册里第一条非空文案。"""
+    for m in album:
+        txt = getattr(m, "text", None)
+        if txt:
+            return txt
+    return None
 
 
 def _entity_name(entity) -> str:
@@ -85,6 +132,90 @@ def _fmt(epoch) -> Optional[str]:
     if not epoch:
         return None
     return datetime.fromtimestamp(epoch).strftime("%Y-%m-%d %H:%M:%S")
+
+
+async def process_and_send_video(
+    client,
+    target,
+    video_msg,
+    *,
+    album=None,
+    caption: Optional[str],
+    trim_start_seconds: int,
+    album_cover: bool,
+    logger: logging.Logger,
+) -> None:
+    """对单条视频做「裁掉开头若干秒 + 用相册图片当封面」处理后上传。
+
+    - trim_start_seconds>0 且 ffmpeg 可用时，下载视频、裁剪、再上传；否则直接发送原 media。
+    - album_cover 为真且相册中含图片时，下载该图片作为视频缩略图(thumb)。
+    任一步骤失败都会安全回退到「直接发送原视频」。
+    """
+    album = album or [video_msg]
+    need_trim = bool(trim_start_seconds and trim_start_seconds > 0)
+    need_cover = bool(album_cover and any(is_photo_message(m) for m in album))
+
+    # 不需要任何处理：直接发送
+    if not need_trim and not need_cover:
+        await client.send_file(target, file=video_msg.media, caption=caption)
+        return
+
+    if need_trim and not media.have_ffmpeg():
+        logger.warning("未检测到 ffmpeg，跳过视频裁剪，按原视频上传。")
+        need_trim = False
+
+    tmpdir = tempfile.mkdtemp(prefix="tgvid_")
+    thumb_path = None
+    upload_path = None
+    try:
+        # 1) 准备封面（相册中的图片）
+        if need_cover:
+            cover_msg = next((m for m in album if is_photo_message(m)), None)
+            if cover_msg is not None:
+                try:
+                    thumb_path = await client.download_media(
+                        cover_msg, file=os.path.join(tmpdir, "cover.jpg")
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("下载相册封面失败：%s（忽略封面）", exc)
+                    thumb_path = None
+
+        # 2) 裁剪视频
+        attributes = None
+        if need_trim:
+            src_path = await client.download_media(
+                video_msg, file=os.path.join(tmpdir, "src")
+            )
+            if not src_path:
+                raise RuntimeError("视频下载失败")
+            out_path = os.path.join(tmpdir, "trimmed.mp4")
+            ok = await media.trim_video(src_path, out_path, float(trim_start_seconds))
+            if ok:
+                upload_path = out_path
+                info = await media.probe_video(out_path)
+                if info:
+                    attributes = [DocumentAttributeVideo(
+                        duration=info.get("duration", 0),
+                        w=info.get("width", 0),
+                        h=info.get("height", 0),
+                        supports_streaming=True,
+                    )]
+            else:
+                logger.warning("视频裁剪失败，按原视频上传。")
+
+        # 3) 上传
+        if upload_path:
+            await client.send_file(
+                target, file=upload_path, caption=caption,
+                thumb=thumb_path, attributes=attributes, supports_streaming=True,
+            )
+        else:
+            # 未裁剪：用原 media，但可附带封面缩略图
+            await client.send_file(
+                target, file=video_msg.media, caption=caption, thumb=thumb_path,
+            )
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 class ForwarderService:
@@ -216,11 +347,20 @@ class ForwarderService:
             if self.settings.mode == "forward":
                 await self.client.forward_messages(self._target_entity, message)
             else:
-                caption = message.text if self.settings.keep_caption else None
+                # 相册：收集同组消息，文案优先取相册里的文字
+                album = await gather_album(self.client, message)
+                if self.settings.keep_caption:
+                    caption = pick_album_caption(album) if len(album) > 1 else message.text
+                else:
+                    caption = None
                 if caption and cf.active:
                     caption = cf.apply(caption)
-                await self.client.send_file(
-                    self._target_entity, file=message.media, caption=caption
+                await process_and_send_video(
+                    self.client, self._target_entity, message,
+                    album=album, caption=caption,
+                    trim_start_seconds=self.settings.trim_start_seconds,
+                    album_cover=self.settings.album_cover,
+                    logger=self.logger,
                 )
             self.stats["forwarded"] += 1
             self.stats["last_video_at"] = time.time()
@@ -592,10 +732,20 @@ class GroupService:
             msg = await client.get_messages(source_ent, ids=msg_id)
             if msg is None:
                 raise RuntimeError("无法获取源消息")
-            caption = msg.text if self.settings.keep_caption else None
+            album = await gather_album(client, msg)
+            if self.settings.keep_caption:
+                caption = pick_album_caption(album) if len(album) > 1 else msg.text
+            else:
+                caption = None
             if caption and cf.active:
                 caption = cf.apply(caption)
-            await client.send_file(target, file=msg.media, caption=caption)
+            await process_and_send_video(
+                client, target, msg,
+                album=album, caption=caption,
+                trim_start_seconds=self.settings.trim_start_seconds,
+                album_cover=self.settings.album_cover,
+                logger=self.logger,
+            )
 
     async def stop(self):
         if self._dispatcher_task is not None:

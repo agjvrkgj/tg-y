@@ -198,6 +198,10 @@ class AccountSettings:
     backfill_limit: int = 0
     send_delay: int = 3
     content_filter: ContentFilter = field(default_factory=ContentFilter)
+    # 上传前删除视频开头的秒数（0=不裁剪）；仅 copy 模式生效，需要安装 ffmpeg
+    trim_start_seconds: int = 0
+    # 搬运相册(视频+图片+文字)时，用相册里的图片作为视频封面；仅 copy 模式生效
+    album_cover: bool = True
 
     def __post_init__(self):
         if not self.session_name:
@@ -227,6 +231,11 @@ class AccountSettings:
         except (TypeError, ValueError):
             acct.send_delay = 3
         acct.content_filter = ContentFilter.from_dict(data.get("content_filter"))
+        try:
+            acct.trim_start_seconds = max(0, int(data.get("trim_start_seconds") or 0))
+        except (TypeError, ValueError):
+            acct.trim_start_seconds = 0
+        acct.album_cover = bool(data.get("album_cover", True))
         return acct
 
     def to_dict(self) -> dict:
@@ -281,6 +290,10 @@ class GroupSettings:
     strategy: str = "balanced"
     backfill_limit: int = 0
     content_filter: ContentFilter = field(default_factory=ContentFilter)
+    # 上传前删除视频开头的秒数（0=不裁剪）；仅 copy 模式生效，需要安装 ffmpeg
+    trim_start_seconds: int = 0
+    # 搬运相册时用相册图片作为视频封面；仅 copy 模式生效
+    album_cover: bool = True
 
     @classmethod
     def from_dict(cls, data: dict) -> "GroupSettings":
@@ -308,6 +321,11 @@ class GroupSettings:
         except (TypeError, ValueError):
             g.backfill_limit = 0
         g.content_filter = ContentFilter.from_dict(data.get("content_filter"))
+        try:
+            g.trim_start_seconds = max(0, int(data.get("trim_start_seconds") or 0))
+        except (TypeError, ValueError):
+            g.trim_start_seconds = 0
+        g.album_cover = bool(data.get("album_cover", True))
         return g
 
     def to_dict(self) -> dict:

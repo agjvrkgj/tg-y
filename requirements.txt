@@ -2,3 +2,7 @@ telethon==1.36.0
 python-dotenv==1.0.1
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+
+# 系统依赖（非 pip 包）：视频裁剪功能需要 ffmpeg / ffprobe
+#   Debian/Ubuntu: sudo apt-get install -y ffmpeg
+#   macOS:         brew install ffmpeg
